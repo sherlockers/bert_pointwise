@@ -479,19 +479,26 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
         logits = tf.matmul(output_layer, output_weights, transpose_b=True)
         logits = tf.nn.bias_add(logits, output_bias)
-        alpha = tf.constant(0.75, dtype=tf.float32)
-        gamma = tf.constant(2, dtype=tf.float32)
-        epsilon = 1.e-8
         probs = tf.nn.softmax(logits, axis=-1)
-        y_true = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
-        y_pred = tf.clip_by_value(probs, epsilon, 1.-epsilon)
-        p_t = y_true * y_pred + (tf.ones_like(y_true) - y_true)*(tf.ones_like(y_true) - y_pred)
-        weight = tf.pow((tf.ones_like(y_true) - p_t), gamma)
-        alpha_t = y_true * alpha + (tf.ones_like(y_true) - y_true) * (1 - alpha)
-        focal_loss = - alpha_t * weight * tf.log(p_t)#最后一列才是加上a的loss
-        #per_example_loss = tf.reshape(focal_loss[:, -1], [focal_loss.shape[0], 1])
-        per_example_loss = tf.layers.flatten(focal_loss[:, -1])
+        log_probs = tf.nn.log_softmax(logits, axis=-1)
+
+        one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
+
+        per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
         loss = tf.reduce_mean(per_example_loss)
+        # alpha = tf.constant(0.75, dtype=tf.float32)
+        # gamma = tf.constant(2, dtype=tf.float32)
+        # epsilon = 1.e-8
+        # probs = tf.nn.softmax(logits, axis=-1)
+        # y_true = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
+        # y_pred = tf.clip_by_value(probs, epsilon, 1.-epsilon)
+        # p_t = y_true * y_pred + (tf.ones_like(y_true) - y_true)*(tf.ones_like(y_true) - y_pred)
+        # weight = tf.pow((tf.ones_like(y_true) - p_t), gamma)
+        # alpha_t = y_true * alpha + (tf.ones_like(y_true) - y_true) * (1 - alpha)
+        # focal_loss = - alpha_t * weight * tf.log(p_t)#最后一列才是加上a的loss
+        # #per_example_loss = tf.reshape(focal_loss[:, -1], [focal_loss.shape[0], 1])
+        # per_example_loss = tf.layers.flatten(focal_loss[:, -1])
+        # loss = tf.reduce_mean(per_example_loss)
 
         return (loss, per_example_loss, logits, probs)
 
