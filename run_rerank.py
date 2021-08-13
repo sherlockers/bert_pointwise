@@ -37,11 +37,11 @@ flags.DEFINE_string(
     "for the task.")
 
 flags.DEFINE_string(
-    "bert_config_file", "BERT_BASE_DIR/bert_config.json",
+    "bert_config_file", "bert_base/bert_config.json",
     "The config json file corresponding to the pre-trained BERT model. "
     "This specifies the model architecture.")
 
-flags.DEFINE_string("vocab_file", "BERT_BASE_DIR/vocab.txt",
+flags.DEFINE_string("vocab_file", "bert_base/vocab.txt",
                     "The vocabulary file that the BERT model was trained on.")
 
 flags.DEFINE_string(
@@ -51,7 +51,7 @@ flags.DEFINE_string(
 ## Other parameters
 
 flags.DEFINE_string(
-    "init_checkpoint", "en_output/model.ckpt-22500",
+    "init_checkpoint", "bert_base/bert_model.ckpt",
     "Initial checkpoint (usually from a pre-trained BERT model).")
 
 flags.DEFINE_bool(
@@ -65,12 +65,12 @@ flags.DEFINE_integer(
     "Sequences longer than this will be truncated, and sequences shorter "
     "than this will be padded.")
 
-flags.DEFINE_bool("do_train", False, "Whether to run training.")
+flags.DEFINE_bool("do_train", True, "Whether to run training.")
 
-flags.DEFINE_bool("do_eval", False, "Whether to run eval on the dev set.")
+flags.DEFINE_bool("do_eval", True, "Whether to run eval on the dev set.")
 
 flags.DEFINE_bool(
-    "do_predict", True,
+    "do_predict", False,
     "Whether to run the model in inference mode on the test set.")
 
 flags.DEFINE_integer("train_batch_size", 32, "Total batch size for training.")
@@ -479,26 +479,26 @@ def create_model(bert_config, is_training, input_ids, input_mask, segment_ids,
 
         logits = tf.matmul(output_layer, output_weights, transpose_b=True)
         logits = tf.nn.bias_add(logits, output_bias)
-        probs = tf.nn.softmax(logits, axis=-1)
-        log_probs = tf.nn.log_softmax(logits, axis=-1)
-
-        one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
-
-        per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
-        loss = tf.reduce_mean(per_example_loss)
-        # alpha = tf.constant(0.75, dtype=tf.float32)
-        # gamma = tf.constant(2, dtype=tf.float32)
-        # epsilon = 1.e-8
         # probs = tf.nn.softmax(logits, axis=-1)
-        # y_true = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
-        # y_pred = tf.clip_by_value(probs, epsilon, 1.-epsilon)
-        # p_t = y_true * y_pred + (tf.ones_like(y_true) - y_true)*(tf.ones_like(y_true) - y_pred)
-        # weight = tf.pow((tf.ones_like(y_true) - p_t), gamma)
-        # alpha_t = y_true * alpha + (tf.ones_like(y_true) - y_true) * (1 - alpha)
-        # focal_loss = - alpha_t * weight * tf.log(p_t)#最后一列才是加上a的loss
-        # #per_example_loss = tf.reshape(focal_loss[:, -1], [focal_loss.shape[0], 1])
-        # per_example_loss = tf.layers.flatten(focal_loss[:, -1])
+        # log_probs = tf.nn.log_softmax(logits, axis=-1)
+        #
+        # one_hot_labels = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
+        #
+        # per_example_loss = -tf.reduce_sum(one_hot_labels * log_probs, axis=-1)
         # loss = tf.reduce_mean(per_example_loss)
+        alpha = tf.constant(0.75, dtype=tf.float32)
+        gamma = tf.constant(2, dtype=tf.float32)
+        epsilon = 1.e-8
+        probs = tf.nn.softmax(logits, axis=-1)
+        y_true = tf.one_hot(labels, depth=num_labels, dtype=tf.float32)
+        y_pred = tf.clip_by_value(probs, epsilon, 1.-epsilon)
+        p_t = y_true * y_pred + (tf.ones_like(y_true) - y_true)*(tf.ones_like(y_true) - y_pred)
+        weight = tf.pow((tf.ones_like(y_true) - p_t), gamma)
+        alpha_t = y_true * alpha + (tf.ones_like(y_true) - y_true) * (1 - alpha)
+        focal_loss = - alpha_t * weight * tf.log(p_t)#最后一列才是加上a的loss
+        #per_example_loss = tf.reshape(focal_loss[:, -1], [focal_loss.shape[0], 1])
+        per_example_loss = tf.layers.flatten(focal_loss[:, -1])
+        loss = tf.reduce_mean(per_example_loss)
 
         return (loss, per_example_loss, logits, probs)
 
@@ -567,6 +567,7 @@ def model_fn_builder(bert_config, num_labels, init_checkpoint, learning_rate,
                 loss=total_loss,
                 train_op=train_op,
                 scaffold_fn=scaffold_fn)
+            #tf.summary.scalar('loss', total_loss)
         elif mode == tf.estimator.ModeKeys.EVAL:
 
             def metric_fn(per_example_loss, label_ids, logits, is_real_example):
